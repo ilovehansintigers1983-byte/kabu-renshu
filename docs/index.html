@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>株の練習売買</title>
+<style>
+  :root {
+    --bg: #faf9f6; --panel: #ffffff; --fg: #1f1e1b; --muted: #6b6860; --line: #e4e1d9;
+    --up: #1f7a4d; --down: #c2412d; --warn: #9a6400; --accent: #2b5fb8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --panel: #22211e; --fg: #ece9e1; --muted: #a29e94; --line: #3a3833;
+      --up: #5cc28c; --down: #f07b65; --warn: #e0b04a; --accent: #7da7f0; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif; line-height: 1.6; }
+  main { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 28px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .note { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .label { font-size: 12px; color: var(--muted); }
+  .num { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .r { text-align: right; }
+  .up { color: var(--up); } .down { color: var(--down); } .warn { color: var(--warn); }
+  .pill { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; border: 1px solid currentColor; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+  dt { color: var(--muted); } dd { margin: 0; min-width: 0; }
+  .logs { list-style: none; padding: 0; margin: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .logs time { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .empty { font-size: 14px; color: var(--muted); margin: 0; }
+  svg { display: block; width: 100%; height: 140px; }
+  button { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+  #err { color: var(--down); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>株の練習売買（売られすぎ買い）</h1>
+    <p class="note">仮想のお金で売買している練習の記録です。ネット上（GitHub）で平日の取引時間中に約15分おきに自動で判定しています。株価は約20分遅れです。</p>
+    <p class="note"><span id="asOf">読み込み中…</span>　<button id="reload" type="button">最新を読み込む</button></p>
+    <p class="note" id="err" hidden></p>
+  </header>
+
+  <section class="cards" aria-label="いまの数字">
+    <div class="card"><div class="label">資産（現金＋株）</div><div class="num" id="equity">—</div><div class="sub">はじめの資金 <span id="initialCash">—</span></div></div>
+    <div class="card"><div class="label">始めてからの損益</div><div class="num" id="profit">—</div><div class="sub" id="profitPct">—</div></div>
+    <div class="card"><div class="label">現金</div><div class="num" id="cash">—</div><div class="sub">保有中 <span id="held">—</span> 銘柄</div></div>
+    <div class="card"><div class="label">買いの条件が成立</div><div class="num"><span id="signals">—</span> 銘柄</div><div class="sub">監視中 <span id="watching">—</span> 銘柄</div></div>
+    <div class="card"><div class="label">日経平均の直近5日</div><div class="num" id="nkChg5">—</div><div class="sub">急落直後の買い止め：<span id="nkBlock">—</span></div></div>
+  </section>
+
+  <section>
+    <h2>保有中の銘柄</h2>
+    <p class="empty" id="heldEmpty" hidden>いま持っている株はありません。</p>
+    <div class="scroll" id="heldBox" hidden><table>
+      <thead><tr><th>銘柄</th><th>買った日</th><th class="r">株数</th><th class="r">買値</th><th class="r">いまの値</th><th class="r">含み損益</th></tr></thead>
+      <tbody id="heldRows"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>資産の動き</h2>
+    <div class="scroll" style="padding:10px"><svg id="chart" role="img" aria-label="資産の推移"></svg></div>
+  </section>
+
+  <section>
+    <h2>売買の記録（新しい順）</h2>
+    <p class="empty" id="tradesEmpty" hidden>まだ売買はありません。</p>
+    <div class="scroll" id="tradesBox" hidden><table>
+      <thead><tr><th>日時</th><th>銘柄</th><th>売買</th><th class="r">株数</th><th class="r">値段</th><th class="r">損益</th><th>理由</th></tr></thead>
+      <tbody id="tradeRows"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>監視銘柄（買いに近い順）</h2>
+    <p class="note" style="margin:0 0 10px">RSIが5未満で、株価が200日平均より上のとき、翌日に買います。</p>
+    <div class="scroll"><table>
+      <thead><tr><th>銘柄</th><th class="r">株価</th><th class="r">前日比</th><th class="r">RSI</th><th>200日平均より</th><th>状態</th></tr></thead>
+      <tbody id="watchRows"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>プログラムの様子</h2>
+    <dl>
+      <dt>自動売買</dt><dd id="running">—</dd>
+      <dt>最後に判定した時刻</dt><dd id="lastTick">—</dd>
+      <dt>ルール</dt><dd id="rule">—</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>できごと（新しい順）</h2>
+    <ul class="logs" id="logs"></ul>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const yen = v => Math.round(v).toLocaleString('ja-JP') + '円';
+const sYen = v => (v > 0 ? '+' : '') + Math.round(v).toLocaleString('ja-JP') + '円';
+const sPct = v => v == null ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+const prc = v => Number(v).toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + '円';
+const tone = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+function set(id, text, cls) { const e = $(id); e.textContent = text; e.className = e.className.replace(/\b(up|down|warn)\b/g, '').trim(); if (cls) e.classList.add(cls); }
+function row(tb, cells) {
+  const tr = document.createElement('tr');
+  for (const [text, cls] of cells) { const td = document.createElement('td'); if (cls) td.className = cls; if (text instanceof Node) td.appendChild(text); else td.textContent = text; tr.appendChild(td); }
+  tb.appendChild(tr);
+}
+function chart(hist) {
+  const svg = $('chart'); svg.replaceChildren();
+  if (!hist || hist.length < 2) { svg.innerHTML = '<text x="8" y="24" fill="currentColor" font-size="13">記録が2日分たまると線が出ます。</text>'; return; }
+  const W = svg.clientWidth || 600, H = 140, P = 6, vals = hist.map(h => h.value);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const pts = hist.map((h, i) => `${(P + i * (W - 2 * P) / (hist.length - 1)).toFixed(1)},${(H - P - (h.value - min) / span * (H - 2 * P - 18)).toFixed(1)}`).join(' ');
+  svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>`
+    + `<text x="${P}" y="14" font-size="12" fill="var(--muted)">${hist[0].date} 〜 ${hist[hist.length - 1].date}　最高 ${yen(max)}／最低 ${yen(min)}</text>`;
+}
+async function load() {
+  $('err').hidden = true;
+  try {
+    const s = await fetch('status.json?t=' + Date.now(), { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    set('asOf', s.asOf + ' 時点' + (s.marketOpen ? '（取引時間中）' : '（取引時間外）'));
+    set('equity', yen(s.equity)); set('initialCash', yen(s.initialCash)); set('cash', yen(s.cash));
+    set('profit', sYen(s.profit), tone(s.profit)); set('profitPct', sPct(s.profitPct), tone(s.profitPct));
+    set('held', String(s.held)); set('signals', String(s.signals)); set('watching', String(s.watching));
+    set('nkChg5', sPct(s.nkChg5), tone(s.nkChg5)); set('nkBlock', s.nkBlock ? '止めています' : '止めていません', s.nkBlock ? 'warn' : '');
+    set('running', s.running ? '動いています' : '止まっています', s.running ? '' : 'warn');
+    set('lastTick', s.lastTick || '—'); set('rule', s.rule);
+    const h = s.watch.filter(w => w.status === '保有中');
+    $('heldEmpty').hidden = h.length > 0; $('heldBox').hidden = h.length === 0;
+    const hb = $('heldRows'); hb.replaceChildren();
+    for (const w of h) row(hb, [[w.name], [w.buyDate || ''], [w.qty.toLocaleString('ja-JP') + '株', 'r'], [prc(w.buyPrice), 'r'], [prc(w.price), 'r'], [sYen(w.pnl), 'r ' + tone(w.pnl)]]);
+    $('tradesEmpty').hidden = s.trades.length > 0; $('tradesBox').hidden = s.trades.length === 0;
+    const tb = $('tradeRows'); tb.replaceChildren();
+    for (const t of s.trades) row(tb, [[t.time], [t.name], [t.side, t.side === '買' ? '' : 'warn'], [t.qty.toLocaleString('ja-JP') + '株', 'r'], [prc(t.price), 'r'], [t.pnl == null ? '' : sYen(t.pnl), 'r ' + tone(t.pnl)], [t.reason || '']]);
+    const wb = $('watchRows'); wb.replaceChildren();
+    for (const w of s.watch) {
+      let st = '';
+      if (w.status) { st = document.createElement('span'); st.className = 'pill ' + (w.status === '買いの条件成立' ? 'up' : w.status === '保有中' ? '' : 'warn'); st.textContent = w.status; }
+      row(wb, [[w.name], [prc(w.price), 'r'], [sPct(w.chgPct), 'r ' + tone(w.chgPct)], [w.rsi == null ? '—' : w.rsi.toFixed(1), 'r'], [w.above200 == null ? '—' : w.above200 ? '上' : '下'], [st]]);
+    }
+    chart(s.equityHistory);
+    const lg = $('logs'); lg.replaceChildren();
+    for (const l of s.logs) { const li = document.createElement('li'); const t = document.createElement('time'); t.textContent = l.time; li.append(t, l.msg); lg.appendChild(li); }
+  } catch (e) {
+    $('err').hidden = false; $('err').textContent = '読み込めませんでした。少し待ってから「最新を読み込む」を押してください。';
+  }
+}
+$('reload').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>

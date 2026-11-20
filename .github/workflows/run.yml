@@ -1,0 +1,40 @@
+name: 練習売買
+on:
+  schedule:
+    # 平日の 9:00〜15:45（日本時間）に15分おき。GitHubの都合で数分〜十数分遅れることがある
+    - cron: '*/15 0-6 * * 1-5'
+    # 夕方にもう1回（ページの数字を終値にそろえる）
+    - cron: '0 9 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '取引時間外でも判定する（試し用）'
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: kabu
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: 判定してページ用の数字を書き出す
+        run: node cloud/run.js
+        env:
+          FORCE_TICK: ${{ inputs.force && '1' || '0' }}
+      - name: 記録を保存する
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloud/state.json docs/status.json
+          git diff --cached --quiet && exit 0
+          git commit -m "練習売買の記録 $(TZ=Asia/Tokyo date '+%m/%d %H:%M')"
+          git pull --rebase --quiet
+          git push

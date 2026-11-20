@@ -1,0 +1,8 @@
+# ネット上で動かすのに必要なものだけを載せる（研究用スクリプト・株価の保存・合言葉は載せない）
+/*
+!/.gitignore
+!/engine.js
+!/cloud/
+!/docs/
+!/.github/
+cloud/*.tmp
